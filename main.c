@@ -1,51 +1,7 @@
-//STC15F2K60S2, 20.000MHz
-__sbit __at (0x80) max7219_din;
-__sbit __at (0x81) max7219_load;
-__sbit __at (0x82) max7219_clk;
-__sbit __at (0xB2) input_pin;
-__sbit __at (0x83) feedback; //PWM: 2500zq
-__sbit __at (0x84) sda;
-__sbit __at (0x85) scl;
-__sbit __at (0x86) battery_charging;
-__sbit __at (0x87) battery_full;
-__sbit __at (0x88) IT0;
-__sbit __at (0xA8) EX0;
-__sbit __at (0xAF) EA;
-__sfr __at (0x8E) AUXR;
-__sfr __at (0xD6) T2H;
-__sfr __at (0xD7) T2L;
-__sfr __at (0xAF) IE2;
-__sfr __at (0x87) PCON;
-__sfr __at (0x9D) P1ASF;
-__sfr __at (0xBC) ADC_CONTR;
-__sfr __at (0xBD) ADC_RES;
-__sfr __at (0xB2) P3M0;
-__sfr __at (0xB1) P3M1;
-//Pins in STC15
-enum {
-  The_1st_bit = 0x01,
-  The_2nd_bit = 0x02,
-  The_3rd_bit = 0x04,
-  The_4th_bit = 0x08,
-  Low_4_bits = 0x0f,
-  The_5th_bit = 0x10,
-  The_6th_bit = 0x20,
-  The_7th_bit = 0x40,
-  The_8th_bit = 0x80,
-  High_4_bits = 0xf0
-};
-enum {
-  Failed = 0,
-  Successed = 1
-};
-enum {
-  OFF = 0,
-  ON = 1
-};
-enum {
-  FALSE = 0,
-  TRUE = 1
-};
+#include "I2C.h"
+#include "Delay.h"
+#include "ConstValue.h"
+#include "STC15Pins.h"
 __bit is_feedback_on;
 __bit input_rasing_edge, input_falling_edge;
 enum {
@@ -99,29 +55,6 @@ unsigned char events[1], state_table[1], display_matrix[3], level;
 //--|Mode 1:Viscosity of object|Level of press|
 //--               7-4               3-0
 //
-inline void _nop_() {
-  __asm__("nop");
-}
-void Delay3us() {
-	unsigned char i;
-	_nop_();
-	_nop_();
-	i = 12;
-	while (--i);
-}
-void Delay_38ms(){
-	unsigned char i, j, k;
-	_nop_();
-	_nop_();
-	i = 3;
-	j = 154;
-	k = 122;
-	do {
-		do {
-			while (--k);
-		} while (--j);
-	} while (--i);
-}
 //Send 8 bits
 void Send_char_max7219(unsigned char dat) {
 	char loop = 0;
@@ -138,72 +71,6 @@ void Write_max7219(unsigned char address, unsigned char dat) {
 	Send_char_max7219(address);
 	Send_char_max7219(dat);
 	max7219_load = ON;
-}
-//Start / Stop I2c;
-inline void I2c_start() {
-  sda=ON;
-  Delay3us();
-  scl=ON;
-  Delay3us();
-  sda=OFF;
-  Delay3us();
-  scl=OFF;
-  Delay3us();
-}
-inline void I2c_end() {
-  sda=OFF;
-  Delay3us();
-  scl=ON;
-  Delay3us();
-  sda=ON;
-  Delay3us();
-}
-//Send 8 bits via I2c
-__bit I2c_send_char(unsigned char dat) {
-	unsigned char loop = 0;
-	__bit is_ack = Failed;
-	for (; loop < 8; ++loop) {
-		sda = (__bit)((dat << loop) & The_8th_bit);
-		Delay3us();
-		scl = ON;
-		Delay3us();
-		scl = OFF;
-		Delay3us();
-	}
-	sda = ON;
-	Delay3us();
-	scl = ON;
-	Delay3us();
-	while (++loop < 0xff) {
-		if (sda == OFF) {
-			is_ack = Successed;
-			break;
-		}
-	}
-	scl = OFF;
-	Delay3us();
-	return is_ack;
-}
-//Receive 8 bits via I2c
-unsigned char I2c_receive_char_with_ack(__bit is_need_ack) {
-	unsigned char dat = 0x00, loop = 0;
-	sda = ON;
-	Delay3us();
-	for (; loop < 8; ++loop) {
-		scl = ON;
-		Delay3us();
-		dat |= ((unsigned char)sda << (7 - loop));
-		Delay3us();
-		scl = OFF;
-		Delay3us();
-	}
-	sda = is_need_ack ^ 1;
-	Delay3us();
-	scl = ON;
-	Delay3us();
-	scl = OFF;
-	Delay3us();
-	return dat;
 }
 enum {
   Start_Write_mpu6050_signal = 0xd0,

@@ -1,4 +1,4 @@
-main.ihx: main.c
+main.ihx: main.c STC15Pins.h ConstValue.h I2C.h Delay.h
 	sdcc --std-sdcc99 main.c
 flash:
 	sudo stcgal main.ihx
