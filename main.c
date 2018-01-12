@@ -1,25 +1,11 @@
-#include "Delay.h"
+#include "Timer.h"
 #include "ConstValue.h"
 #include "STC15Pins.h"
 #include "MAX7219.h"
 #include "MPU6050.h"
 __bit is_feedback_on;
 __bit input_rasing_edge, input_falling_edge;
-enum {
-  Times_of_1ms_size = 2
-};
-unsigned char Times_of_1ms[Times_of_1ms_size];
-enum {
-  Timer_Feedback = 0,
-  Timer_Delay = 1
-};
-enum {
-  Times_of_1ms_long_size = 1
-};
-unsigned int Times_of_1ms_long[Times_of_1ms_long_size];
-enum {
-  Timer_Long_Press = 0
-};
+
 enum {
 	Press_level_none = 0x00,
 	Press_level_press = 0x01,
@@ -62,36 +48,6 @@ void Input_signal_edge() __interrupt 0 {
 	if (input_pin == OFF) input_rasing_edge = TRUE;
 	else input_falling_edge = TRUE;
 }
-void Reset_timer() {
-  unsigned char i; 
-  for (i = 0; i < Times_of_1ms_size; ++i)
-    Times_of_1ms[i] = 0x00;
-  for (i = 0; i < Times_of_1ms_long_size; ++i)
-    Times_of_1ms_long[i] = 0x0000;
-}
-//Stop 1msTimer
-inline void Stop_1ms_timer() {
-  AUXR &= ~The_5th_bit;
-  Reset_timer();
-}
-//Start 1msTimer
-void Start_1ms_timer()
-{
-  const unsigned char Times_of_cycle_for_1ms_High = 0xb1;
-  const unsigned char Times_of_cycle_for_1ms_Low = 0xe0;
-	Stop_1ms_timer();
-	T2H = Times_of_cycle_for_1ms_High;
-	T2L = Times_of_cycle_for_1ms_Low;
-	AUXR |= The_5th_bit;
-}
-//Interrupt-function of 1msTimer
-void Count_1ms() __interrupt 12 {
-  unsigned char i;
-  for (i = 0; i < Times_of_1ms_size; ++i)
-    if (Times_of_1ms[i] != 0x00) --Times_of_1ms[i];
-  for (i = 0; i < Times_of_1ms_long_size; ++i)
-    if (Times_of_1ms_long[i] != 0x0000) --Times_of_1ms_long[i];
-}
 //Initialize everything (chips,input and timers)
 void Init() {
 	//----------Initialize framework----------
@@ -129,13 +85,10 @@ void Init() {
 	//----------Initialize feedback----------
 	feedback = 1;
   is_feedback_on = 0;
-	//----------Initialize 1ms timer----------
-	AUXR |= 0x04;
-	IE2 |= 0x04;
-	EA = 1;
   //----------Initialize ADC----------
   P1ASF = 0x80;
   ADC_RES = 0x00;
+  Init_1ms_Timer();
 }
 //Shutdown Everything
 void Shutdown() {
@@ -422,11 +375,6 @@ void Process_LED_changed() {
 		events[0] &= 0xdf;
 		Write_max7219(0x03, display_matrix[2]);
 	}
-}
-void Delay_12ms(unsigned int k){
-	_nop_();
-	_nop_();
-  while (--k);
 }
 void main() {
 	Init();
