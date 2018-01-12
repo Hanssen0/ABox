@@ -2,6 +2,8 @@
 #include "Delay.h"
 #include "ConstValue.h"
 #include "STC15Pins.h"
+#include "MAX7219.h"
+#include "MPU6050.h"
 __bit is_feedback_on;
 __bit input_rasing_edge, input_falling_edge;
 enum {
@@ -56,49 +58,6 @@ unsigned char events[1], state_table[1], display_matrix[3], level;
 //--               7-4               3-0
 //
 //Send 8 bits
-void Send_char_max7219(unsigned char dat) {
-	char loop = 0;
-	for(; loop<8; ++loop) {
-		max7219_clk = OFF;
-		max7219_din = (__bit)(dat & The_8th_bit);
-		dat <<= 1;
-		max7219_clk = ON;
-	}
-}
-//Write a register
-void Write_max7219(unsigned char address, unsigned char dat) {
-	max7219_load = OFF;
-	Send_char_max7219(address);
-	Send_char_max7219(dat);
-	max7219_load = ON;
-}
-enum {
-  Start_Write_mpu6050_signal = 0xd0,
-  Start_Read_mpu6050_signal = 0xd1
-};
-//Write mpu6050
-__bit Write_mpu6050(unsigned char address, unsigned char dat) {
-	__bit is_succeeded = Successed;
-	I2c_start();
-	is_succeeded = I2c_send_char(Start_Write_mpu6050_signal);
-	is_succeeded = I2c_send_char(address);
-	is_succeeded = I2c_send_char(dat);
-	I2c_end();
-	return is_succeeded;
-}
-//Read mpu6050
-__bit Read_mpu6050(unsigned char address, unsigned int * dat) {
-	__bit is_succeeded = Successed;
-	I2c_start();
-	is_succeeded = I2c_send_char(Start_Write_mpu6050_signal);
-	is_succeeded = I2c_send_char(address);
-	I2c_start();
-	is_succeeded = I2c_send_char(Start_Read_mpu6050_signal);
-	*dat = I2c_receive_char_with_ack(ON) << 8;
-	*dat |= I2c_receive_char_with_ack(OFF);
-	I2c_end();
-	return is_succeeded;
-}
 //Interrupt-function of button 
 void Input_signal_edge() __interrupt 0 {
 	if (input_pin == OFF) input_rasing_edge = TRUE;
