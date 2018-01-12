@@ -3,7 +3,6 @@ __sbit __at (0x80) max7219_din;
 __sbit __at (0x81) max7219_load;
 __sbit __at (0x82) max7219_clk;
 __sbit __at (0xB2) input_pin;
-__bit input_rasing_edge, input_falling_edge;
 __sbit __at (0x83) feedback; //PWM: 2500zq
 __sbit __at (0x84) sda;
 __sbit __at (0x85) scl;
@@ -22,14 +21,36 @@ __sfr __at (0xBC) ADC_CONTR;
 __sfr __at (0xBD) ADC_RES;
 __sfr __at (0xB2) P3M0;
 __sfr __at (0xB1) P3M1;
+//Pins in STC15
+enum {
+  The_1st_bit = 0x01;
+  The_2nd_bit = 0x02;
+  The_3rd_bit = 0x04;
+  The_4th_bit = 0x08;
+  Low_4_bits = 0x0f;
+  The_5th_bit = 0x10;
+  The_6th_bit = 0x20;
+  The_7th_bit = 0x40;
+  The_8th_bit = 0x80;
+  High_4_bits = 0xf0;
+};
 __bit is_feedback_on;
-unsigned char Timer_1ms_count_down[2];
-//-Count down:
-//--0.Feedback
-//--1.Processs acceleration (Mode 1)
-unsigned int Timer_1ms_count_down_long[1];
-//-Count down long:
-//--0.Press
+__bit input_rasing_edge, input_falling_edge;
+enum {
+  Times_of_1ms_size = 2
+};
+unsigned char Times_of_1ms[Times_of_1ms_size];
+enum {
+  Timer_Feedback = 0,
+  Timer_Delay = 1
+};
+enum {
+  Times_of_1ms_long_size = 1
+};
+unsigned int Times_of_1ms_long[Times_of_1ms_long_size];
+enum {
+  Timer_Long_Press = 0
+};
 enum {
 	Press_level_none = 0x00,
 	Press_level_press = 0x01,
@@ -65,6 +86,7 @@ unsigned char events[1], state_table[1], display_matrix[3], level;
 //-Level:
 //--|Mode 1:Viscosity of object|Level of press|
 //--               7-4               3-0
+//
 inline void _nop_() {
   __asm__("nop");
 }
@@ -106,8 +128,24 @@ void Write_max7219(unsigned char address, unsigned char dat) {
 	max7219_load = 1;
 }
 //Start / Stop I2c;
-#define I2c_start() {sda=1;Delay3us();scl=1;Delay3us();sda=0;Delay3us();scl=0;Delay3us();}
-#define I2c_end() {sda=0;Delay3us();scl=1;Delay3us();sda=1;Delay3us();}
+inline void I2c_start() {
+  sda=1;
+  Delay3us();
+  scl=1;
+  Delay3us();
+  sda=0;
+  Delay3us();
+  scl=0;
+  Delay3us();
+}
+inline void I2c_end() {
+  sda=0;
+  Delay3us();
+  scl=1;
+  Delay3us();
+  sda=1;
+  Delay3us();
+}
 //Send 8 bits via I2c
 __bit I2c_send_char(unsigned char dat) {
 	unsigned char loop = 0;
@@ -183,8 +221,18 @@ void Input_signal_edge() __interrupt 0 {
 	if (input_pin == 0) input_rasing_edge = 1;
 	else input_falling_edge = 1;
 }
+void Reset_timer() {
+  unsigned char i; 
+  for (i = 0; i < Times_of_1ms_size; ++i)
+    Times_of_1ms[i]=0x00;
+  for (i = 0; i < Times_of_1ms_long_size; ++i)
+    Times_of_1ms_long[i]=0x0000;
+}
 //Stop 1msTimer
-#define Stop_1ms_timer() AUXR &= 0xef,Timer_1ms_count_down_long[0]=0x0000,Timer_1ms_count_down[0]=0x00,Timer_1ms_count_down[1]=0x00;
+inline void Stop_1ms_timer() {
+  AUXR &= 0xef;
+  Reset_timer();
+}
 //Start 1msTimer
 void Start_1ms_timer()
 {
@@ -195,9 +243,11 @@ void Start_1ms_timer()
 }
 //Interrupt-function of 1msTimer
 void Count_1ms() __interrupt 12 {
-	if (Timer_1ms_count_down_long[0] != 0x0000) --Timer_1ms_count_down_long[0];
-	if (Timer_1ms_count_down[0] != 0x00) --Timer_1ms_count_down[0];
-	if (Timer_1ms_count_down[1] != 0x00) --Timer_1ms_count_down[1];
+  unsigned char i;
+  for (i = 0; i < Times_of_1ms_size; ++i)
+    if (Times_of_1ms[i] != 0x00) --Times_of_1ms[i];
+  for (i = 0; i < Times_of_1ms_long_size; ++i)
+    if (Times_of_1ms_long[i] != 0x0000) --Times_of_1ms_long[i];
 }
 //Initialize everything (chips,input and timers)
 void Init() {
@@ -208,8 +258,7 @@ void Init() {
 	display_matrix[1] = 0x00;
 	display_matrix[2] = 0x00;
 	events[0] |= 0xe0;//Initialize display
-	Timer_1ms_count_down[0] = 0x00;
-	Timer_1ms_count_down[1] = 0x00;
+  Reset_timer();
 	level = 0;
 	//----------Initialize max7219----------
 	Write_max7219(0x01, 0x00);//---
@@ -265,9 +314,9 @@ void Shutdown() {
 		if (input_rasing_edge == 1) {
 			input_rasing_edge = 0;
 			Start_1ms_timer();
-			Timer_1ms_count_down_long[0] = Press_level_restart_time;
+			Times_of_1ms_long[Timer_Long_Press] = Press_level_restart_time;
 			while (input_pin == 0) {
-				 if (Timer_1ms_count_down_long[0] == 0x0000) {
+				 if (Times_of_1ms_long[Timer_Long_Press] == 0x0000) {
 					 Restart = 1;
 					 break;
 				 }
@@ -282,6 +331,10 @@ void Shutdown() {
 	//Return to normal
 	Write_max7219(0x0c, 0x01);
 	Write_mpu6050(0x6b, 0x00);
+}
+inline void Start_single_tap_feedback() {
+  Times_of_1ms[Timer_Feedback] = 0x46;
+  events[0] |= 0x10;
 }
 void Mode_1_processing(unsigned int critical_value) {
 	unsigned int dat, max;
@@ -364,28 +417,21 @@ void Mode_1_processing(unsigned int critical_value) {
 		}
 		state_table[0] &= 0xf0;
 		state_table[0] |= stable_state;
-		Timer_1ms_count_down[0] = 0x1e;//Feedback time: 50ms
-		events[0] |= 0x10;
-	}
+    Start_single_tap_feedback();
+  }
 }
 //Button: Press level changed
 void Process_button_press_level_changed_events() {
-	//Press button
 	if ((level & 0x0f) == Press_level_press) {
 		if ((state_table[0] & 0xf0) == 0x00) {
-			Timer_1ms_count_down[0] = 0x1e;//Feedback time: 50ms
-			events[0] |= 0x10;
+      Start_single_tap_feedback();
 		}
 	}
-	//Level 1 press
 	if ((level & 0x0f) == Press_level_1) {
-		Timer_1ms_count_down[0] = 0x1e;//Feedback time: 50ms
-		events[0] |= 0x10;
+    Start_single_tap_feedback();
 	}
-  //Level 2 press
 	if ((level & 0x0f) == Press_level_2) {
-		Timer_1ms_count_down[0] = 0x1e;//Feedback time: 50ms
-		events[0] |= 0x10;
+    Start_single_tap_feedback();
 	}
 }
 void Check_power_stat() {
@@ -461,8 +507,8 @@ void Process_LED_events() {
 	}
 	//Mode 1
 	if ((state_table[0] & 0xf0) == 0x10) {
-		if (Timer_1ms_count_down[1] == 0x00) {
-			Timer_1ms_count_down[1] = 0x0f;
+		if (Times_of_1ms[Timer_Delay] == 0x00) {
+			Times_of_1ms[Timer_Delay] = 0x0f;
 			if ((level & 0xf0) == 0x00) Mode_1_processing(0x0200);
 			else Mode_1_processing(0x7ffe);
 		}
@@ -490,24 +536,24 @@ void Process_press_button() {
 		events[0] |= 0x01;//Event: Level changed
 		level &= 0xf0;
 		level |= Press_level_press;//Button level: Press
-		Timer_1ms_count_down_long[0] = Press_level_1_time;
+		Times_of_1ms_long[Timer_Long_Press] = Press_level_1_time;
 	}
 	//Level 1
-	if ((level & 0x0F) == Press_level_press && Timer_1ms_count_down_long[0] == 0x0000) {
+	if ((level & 0x0F) == Press_level_press && Times_of_1ms_long[Timer_Long_Press] == 0x0000) {
 		events[0] |= 0x01, //Event: Level changed
 		level &= 0xf0;
 		level |= Press_level_1;//Button level: Level 1
-		Timer_1ms_count_down_long[0] = Press_level_2_time;
+		Times_of_1ms_long[Timer_Long_Press] = Press_level_2_time;
 	}
   //Level 2
-	if ((level & 0x0F) == Press_level_1 && Timer_1ms_count_down_long[0] == 0x0000) {
+	if ((level & 0x0F) == Press_level_1 && Times_of_1ms_long[Timer_Long_Press] == 0x0000) {
 		events[0] |= 0x01, //Event: Level changed
 		level &= 0xf0;
 		level |= Press_level_2;//Button level: Level 2
-		Timer_1ms_count_down_long[0] = Press_level_shutdown_time;
+		Times_of_1ms_long[Timer_Long_Press] = Press_level_shutdown_time;
 	}
 	//Level shutdown
-	if ((level & 0x0F) == Press_level_2 && Timer_1ms_count_down_long[0] == 0x0000) {
+	if ((level & 0x0F) == Press_level_2 && Times_of_1ms_long[Timer_Long_Press] == 0x0000) {
 		level &= 0xf0;//Button level: None
 		Shutdown();
 	}
@@ -540,26 +586,6 @@ void Delay_12ms(unsigned int k){
   while (--k);
 }
 void main() {
-  unsigned char del = 1;
-  unsigned int co = 2400;
-  while (1 == 1) {
-    feedback = 0;
-    Delay_12ms(co);
-    feedback = 1;
-    Delay_12ms(co);
-    if (del == 200) {
-      del = 0;
-      Delay_38ms();
-      Delay_38ms();
-      Delay_38ms();
-      Delay_38ms();
-      Delay_38ms();
-      Delay_38ms();
-      Delay_38ms();
-      Delay_38ms();
-    }
-    ++del;
-  }
 	Init();
 	Write_max7219(0x0c, 0x01);
 	Write_mpu6050(0x6b, 0x00);
@@ -580,7 +606,7 @@ void main() {
       is_feedback_on = 1;
 		}
 		//---Stop feedback---
-		if (is_feedback_on == 1 && Timer_1ms_count_down[0] == 0x00) feedback = 1, is_feedback_on = 0;
+		if (is_feedback_on == 1 && Times_of_1ms[Timer_Feedback] == 0x00) feedback = 1, is_feedback_on = 0;
 		//-Events-
 		Process_events();
 	}
