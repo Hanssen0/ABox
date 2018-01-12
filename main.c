@@ -23,16 +23,28 @@ __sfr __at (0xB2) P3M0;
 __sfr __at (0xB1) P3M1;
 //Pins in STC15
 enum {
-  The_1st_bit = 0x01;
-  The_2nd_bit = 0x02;
-  The_3rd_bit = 0x04;
-  The_4th_bit = 0x08;
-  Low_4_bits = 0x0f;
-  The_5th_bit = 0x10;
-  The_6th_bit = 0x20;
-  The_7th_bit = 0x40;
-  The_8th_bit = 0x80;
-  High_4_bits = 0xf0;
+  The_1st_bit = 0x01,
+  The_2nd_bit = 0x02,
+  The_3rd_bit = 0x04,
+  The_4th_bit = 0x08,
+  Low_4_bits = 0x0f,
+  The_5th_bit = 0x10,
+  The_6th_bit = 0x20,
+  The_7th_bit = 0x40,
+  The_8th_bit = 0x80,
+  High_4_bits = 0xf0
+};
+enum {
+  Failed = 0,
+  Successed = 1
+};
+enum {
+  OFF = 0,
+  ON = 1
+};
+enum {
+  FALSE = 0,
+  TRUE = 1
 };
 __bit is_feedback_on;
 __bit input_rasing_edge, input_falling_edge;
@@ -114,132 +126,138 @@ void Delay_38ms(){
 void Send_char_max7219(unsigned char dat) {
 	char loop = 0;
 	for(; loop<8; ++loop) {
-		max7219_clk = 0;
-		max7219_din = (__bit)(dat & 0x80);
+		max7219_clk = OFF;
+		max7219_din = (__bit)(dat & The_8th_bit);
 		dat <<= 1;
-		max7219_clk = 1;
+		max7219_clk = ON;
 	}
 }
 //Write a register
 void Write_max7219(unsigned char address, unsigned char dat) {
-	max7219_load = 0;
+	max7219_load = OFF;
 	Send_char_max7219(address);
 	Send_char_max7219(dat);
-	max7219_load = 1;
+	max7219_load = ON;
 }
 //Start / Stop I2c;
 inline void I2c_start() {
-  sda=1;
+  sda=ON;
   Delay3us();
-  scl=1;
+  scl=ON;
   Delay3us();
-  sda=0;
+  sda=OFF;
   Delay3us();
-  scl=0;
+  scl=OFF;
   Delay3us();
 }
 inline void I2c_end() {
-  sda=0;
+  sda=OFF;
   Delay3us();
-  scl=1;
+  scl=ON;
   Delay3us();
-  sda=1;
+  sda=ON;
   Delay3us();
 }
 //Send 8 bits via I2c
 __bit I2c_send_char(unsigned char dat) {
 	unsigned char loop = 0;
-	__bit is_ack = 0;
+	__bit is_ack = Failed;
 	for (; loop < 8; ++loop) {
-		sda = (__bit)((dat << loop) & 0x80);
+		sda = (__bit)((dat << loop) & The_8th_bit);
 		Delay3us();
-		scl = 1;
+		scl = ON;
 		Delay3us();
-		scl = 0;
+		scl = OFF;
 		Delay3us();
 	}
-	sda = 1;
+	sda = ON;
 	Delay3us();
-	scl = 1;
+	scl = ON;
 	Delay3us();
 	while (++loop < 0xff) {
-		if (sda == 0) {
-			is_ack = 1;
+		if (sda == OFF) {
+			is_ack = Successed;
 			break;
 		}
 	}
-	scl = 0;
+	scl = OFF;
 	Delay3us();
 	return is_ack;
 }
 //Receive 8 bits via I2c
-unsigned char I2c_receive_char(__bit is_need_ack) {
+unsigned char I2c_receive_char_with_ack(__bit is_need_ack) {
 	unsigned char dat = 0x00, loop = 0;
-	sda = 1;
+	sda = ON;
 	Delay3us();
 	for (; loop < 8; ++loop) {
-		scl = 1;
+		scl = ON;
 		Delay3us();
 		dat |= ((unsigned char)sda << (7 - loop));
 		Delay3us();
-		scl = 0;
+		scl = OFF;
 		Delay3us();
 	}
 	sda = is_need_ack ^ 1;
 	Delay3us();
-	scl = 1;
+	scl = ON;
 	Delay3us();
-	scl = 0;
+	scl = OFF;
 	Delay3us();
 	return dat;
 }
+enum {
+  Start_Write_mpu6050_signal = 0xd0,
+  Start_Read_mpu6050_signal = 0xd1
+};
 //Write mpu6050
 __bit Write_mpu6050(unsigned char address, unsigned char dat) {
-	__bit is_succeeded = 1;
+	__bit is_succeeded = Successed;
 	I2c_start();
-	if (I2c_send_char(0xd0) == 0) is_succeeded = 0;
-	if (I2c_send_char(address) == 0) is_succeeded = 0;
-	if (I2c_send_char(dat) == 0) is_succeeded = 0;
+	is_succeeded = I2c_send_char(Start_Write_mpu6050_signal);
+	is_succeeded = I2c_send_char(address);
+	is_succeeded = I2c_send_char(dat);
 	I2c_end();
 	return is_succeeded;
 }
 //Read mpu6050
 __bit Read_mpu6050(unsigned char address, unsigned int * dat) {
-	__bit is_succeeded = 1;
+	__bit is_succeeded = Successed;
 	I2c_start();
-	if (I2c_send_char(0xd0) == 0) is_succeeded = 0;
-	if (I2c_send_char(address) == 0) is_succeeded = 0;
+	is_succeeded = I2c_send_char(Start_Write_mpu6050_signal);
+	is_succeeded = I2c_send_char(address);
 	I2c_start();
-	if (I2c_send_char(0xd1) == 0) is_succeeded = 0;
-	*dat = I2c_receive_char(1) << 8;
-	*dat |= I2c_receive_char(0);
+	is_succeeded = I2c_send_char(Start_Read_mpu6050_signal);
+	*dat = I2c_receive_char_with_ack(ON) << 8;
+	*dat |= I2c_receive_char_with_ack(OFF);
 	I2c_end();
 	return is_succeeded;
 }
 //Interrupt-function of button 
 void Input_signal_edge() __interrupt 0 {
-	if (input_pin == 0) input_rasing_edge = 1;
-	else input_falling_edge = 1;
+	if (input_pin == OFF) input_rasing_edge = TRUE;
+	else input_falling_edge = TRUE;
 }
 void Reset_timer() {
   unsigned char i; 
   for (i = 0; i < Times_of_1ms_size; ++i)
-    Times_of_1ms[i]=0x00;
+    Times_of_1ms[i] = 0x00;
   for (i = 0; i < Times_of_1ms_long_size; ++i)
-    Times_of_1ms_long[i]=0x0000;
+    Times_of_1ms_long[i] = 0x0000;
 }
 //Stop 1msTimer
 inline void Stop_1ms_timer() {
-  AUXR &= 0xef;
+  AUXR &= ~The_5th_bit;
   Reset_timer();
 }
 //Start 1msTimer
 void Start_1ms_timer()
 {
+  const unsigned char Times_of_cycle_for_1ms_High = 0xb1;
+  const unsigned char Times_of_cycle_for_1ms_Low = 0xe0;
 	Stop_1ms_timer();
-	T2L = 0xe0;
-	T2H = 0xb1;
-	AUXR |= 0x10;
+	T2H = Times_of_cycle_for_1ms_High;
+	T2L = Times_of_cycle_for_1ms_Low;
+	AUXR |= The_5th_bit;
 }
 //Interrupt-function of 1msTimer
 void Count_1ms() __interrupt 12 {
