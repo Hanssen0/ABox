@@ -1,4 +1,3 @@
-#include "I2C.h"
 #include "Delay.h"
 #include "ConstValue.h"
 #include "STC15Pins.h"
