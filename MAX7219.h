@@ -21,7 +21,7 @@ void Write_max7219(unsigned char address, unsigned char dat) {
 	Send_char_max7219(dat);
 	max7219_load = ON;
 }
-void Set_display_max7219(const unsigned char matrix_ord, unsigned char dat) {
+void Set_display_max7219(unsigned char matrix_ord, unsigned char dat) {
   switch (matrix_ord) {
    case 0:
     matrix_0_modified = ON;
