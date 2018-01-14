@@ -5,7 +5,6 @@
 #include "MPU6050.h"
 __bit is_feedback_on;
 __bit input_rasing_edge, input_falling_edge;
-
 enum {
 	Press_level_none = 0x00,
 	Press_level_press = 0x01,
@@ -18,7 +17,7 @@ enum {
 	Press_level_shutdown_time = 0xFA0, //4000
 	Press_level_restart_time = 0x1388 //5000
 };
-unsigned char events[1], state_table[1], display_matrix[3], level;
+unsigned char events[1], state_table[1], level;
 //-Events:
 //--0.|LED digital 1 changed|LED digital 2 changed|LED digital 3 changed|Feedback|
 //--              7                     6                     5             4          
@@ -53,23 +52,11 @@ void Init() {
 	//----------Initialize framework----------
 	events[0] = 0x00;
 	state_table[0] = 0x00;
-	display_matrix[0] = 0x00;
-	display_matrix[1] = 0x00;
-	display_matrix[2] = 0x00;
 	events[0] |= 0xe0;//Initialize display
   Reset_timer();
 	level = 0;
-	//----------Initialize max7219----------
-	Write_max7219(0x01, 0x00);//---
-	Write_max7219(0x02, 0x00);//Turn off leds
-	Write_max7219(0x03, 0x00);//---
-	Write_max7219(0x09, 0x00);//No decode
-	Write_max7219(0x0a, 0x0f);//Max intensity
-	Write_max7219(0x0b, 0x02);//3 line of leds
-	Write_max7219(0x0f, 0x00);//Turn off test mode
-	//----------Initialize I2c----------
-	sda = 1;
-	scl = 1;
+  Init_max7219();
+  Init_I2c();
 	//----------Initialize mpu6050----------
 	Write_mpu6050(0x6b, 0x48);
 	Write_mpu6050(0x19, 0x07);
@@ -92,7 +79,7 @@ void Init() {
 }
 //Shutdown Everything
 void Shutdown() {
-	__bit Restart = 0;
+	__bit Restart = Failed;
 	//Turn everything off
 	Write_max7219(0x0c, 0x00);
 	Write_mpu6050(0x6b, 0x48);
@@ -102,7 +89,7 @@ void Shutdown() {
   Delay_38ms();
   Delay_38ms();
 	feedback = 1;
-	while (Restart != 1) {
+	while (Restart != Successed) {
 		Stop_1ms_timer();
 		PCON = 0x02;
 		_nop_();
@@ -113,7 +100,7 @@ void Shutdown() {
 			Times_of_1ms_long[Timer_Long_Press] = Press_level_restart_time;
 			while (input_pin == 0) {
 				 if (Times_of_1ms_long[Timer_Long_Press] == 0x0000) {
-					 Restart = 1;
+					 Restart = Successed;
 					 break;
 				 }
 			}
@@ -171,44 +158,35 @@ void Mode_1_processing(unsigned int critical_value) {
 		switch (state_table[0] & 0x0f) {
 		case 0x03:
 		case 0x05:
-			display_matrix[0] = 0x00;
-			events[0] |= 0x80;
+      Set_display_max7219(0, 0x00);
 			break;
 		case 0x01:
 		case 0x04:
-			display_matrix[1] = 0x00;
-			events[0] |= 0x40;
+      Set_display_max7219(1, 0x00);
 			break;
 		case 0x02:
 		case 0x06:
-			display_matrix[2] = 0x00;
-			events[0] |= 0x20;
+      Set_display_max7219(2, 0x00);
 			break;
 		}
 		switch (stable_state) {
 		case 0x01:
-			display_matrix[1] = 0x33;
-			events[0] |= 0x40;
+      Set_display_max7219(1, 0x33);
 			break;
 		case 0x02:
-			display_matrix[2] = 0xcc;
-			events[0] |= 0x20;
+      Set_display_max7219(2, 0xcc);
 			break;
 		case 0x03:
-			display_matrix[0] = 0xcc;
-			events[0] |= 0x80;
+      Set_display_max7219(0, 0xcc);
 			break;
 		case 0x04:
-			display_matrix[1] = 0xcc;
-			events[0] |= 0x40;
+      Set_display_max7219(1, 0xcc);
 			break;
 		case 0x05:
-			display_matrix[0] = 0x33;
-			events[0] |= 0x80;
+      Set_display_max7219(0, 0x33);
 			break;
 		case 0x06:
-			display_matrix[2] = 0x33;
-			events[0] |= 0x20;
+      Set_display_max7219(2, 0x33);
 			break;
 		}
 		state_table[0] &= 0xf0;
@@ -232,11 +210,13 @@ void Process_button_press_level_changed_events() {
 }
 void Check_power_stat() {
   if (battery_charging == 0) {
-    display_matrix[0] = 0x5B, display_matrix[1] = 0xF8, display_matrix[2] = 0x40;
-    events[0] |= 0xe0;
+    Set_display_max7219(0, 0x5B);
+    Set_display_max7219(1, 0xF8);
+    Set_display_max7219(2, 0x40);
   }else if (battery_full == 0) {
-    display_matrix[0] = 0xFF, display_matrix[1] = 0xFF, display_matrix[2] = 0xFF;
-    events[0] |= 0xe0;
+    Set_display_max7219(0, 0xFF);
+    Set_display_max7219(1, 0xFF);
+    Set_display_max7219(2, 0xFF);
   }else {
     ADC_CONTR = 0xE0;
     Delay_38ms();
@@ -247,8 +227,9 @@ void Check_power_stat() {
     _nop_();
     while ((ADC_CONTR & 0x10) == 0);
     ADC_CONTR = 0x00;
-    display_matrix[0] = ADC_RES, display_matrix[1] = 0x00, display_matrix[2] = 0x00;
-    events[0] |= 0xe0;
+    Set_display_max7219(0, ADC_RES);
+    Set_display_max7219(1, 0x00);
+    Set_display_max7219(2, 0x00);
   }
 }
 //Button: Falling edge
@@ -271,8 +252,9 @@ void Process_button_falling_edge_events() {
 	//Change mode
 		if ((state_table[0] & 0xf0) == 0x00) {
 			state_table[0] = 0x10;
-			display_matrix[0] = 0x00, display_matrix[1] = 0x00, display_matrix[2] = 0x00;
-			events[0] |= 0xe0;
+      Set_display_max7219(0, 0x00);
+      Set_display_max7219(1, 0x00);
+      Set_display_max7219(2, 0x00);
 			level &= 0x0f;
 		}else {
 			state_table[0] &= 0x0f;
@@ -292,12 +274,15 @@ void Process_LED_events() {
 	if ((state_table[0] & 0xf0) == 0x00) {
 		if ((events[0] & 0x04) != 0x00) {
 			events[0] &= 0xfb;
-			display_matrix[0] = 0x00, display_matrix[1] = 0x00, display_matrix[2] = 0x00;
-			events[0] |= 0xe0;
+      Set_display_max7219(0, 0x00);
+      Set_display_max7219(1, 0x00);
+      Set_display_max7219(2, 0x00);
 		}
 		if ((events[0] & 0x08) != 0x00) {
 			events[0] &= 0xf7;
-			display_matrix[0] = 0xff, display_matrix[1] = 0xff, display_matrix[2] = 0xff;
+      Set_display_max7219(0, 0xff);
+      Set_display_max7219(1, 0xff);
+      Set_display_max7219(2, 0xff);
 			events[0] |= 0xe0;
 		}
 	}
@@ -362,20 +347,6 @@ void Process_release_button() {
 		input_falling_edge = 0;
 	}
 }
-void Process_LED_changed() {
-	if ((events[0] & 0x80) != 0x00) {
-		events[0] &= 0x7f;
-		Write_max7219(0x01, display_matrix[0]);
-	}
-	if ((events[0] & 0x40) != 0x00) {
-		events[0] &= 0xbf;
-		Write_max7219(0x02, display_matrix[1]);
-	}
-	if ((events[0] & 0x20) != 0x00) {
-		events[0] &= 0xdf;
-		Write_max7219(0x03, display_matrix[2]);
-	}
-}
 void main() {
 	Init();
 	Write_max7219(0x0c, 0x01);
@@ -387,8 +358,7 @@ void main() {
 		//--Button--
 		if (input_pin == 0) Process_press_button();
 		if (input_pin == 1) Process_release_button();
-		//--LED--
-		Process_LED_changed();
+    Update_display_max7219();
 		//--Feedback--
 		//---Start feedback---
 		if ((events[0] & 0x10) != 0x00) {

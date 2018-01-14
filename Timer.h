@@ -25,8 +25,8 @@ void Reset_timer() {
     Times_of_1ms_long[i] = 0x0000;
 }
 void Init_1ms_Timer() {
-	AUXR |= The_4th_bit;
-	IE2 |= The_4th_bit;
+	AUXR |= The_3rd_bit;
+	IE2 |= The_3rd_bit;
 	EA = ON;
 }
 inline void Stop_1ms_timer() {

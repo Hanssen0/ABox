@@ -3,6 +3,10 @@
 #include "ConstValue.h"
 #include "STC15Pins.h"
 #include "Timer.h"
+inline void Init_I2c() {
+  sda = ON;
+  scl = ON;
+}
 inline void I2c_start() {
   sda=ON;
   Delay3us();
