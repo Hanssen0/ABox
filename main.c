@@ -3,7 +3,7 @@
 #include "STC15Pins.h"
 #include "MAX7219.h"
 #include "MPU6050.h"
-__bit is_feedback_on;
+#include "Feedback.h"
 __bit input_rasing_edge, input_falling_edge;
 enum {
 	Press_level_none = 0x00,
@@ -19,8 +19,8 @@ enum {
 };
 unsigned char events[1], state_table[1], level;
 //-Events:
-//--0.|LED digital 1 changed|LED digital 2 changed|LED digital 3 changed|Feedback|
-//--              7                     6                     5             4          
+//--0.Feedback|
+//--      4          
 //--  Trun LED to state 1|Trun LED to state 0|Input: Falling edge|Input: Level changed
 //--	          3                  2                 1                   0
 //-State:
@@ -52,43 +52,38 @@ void Init() {
 	//----------Initialize framework----------
 	events[0] = 0x00;
 	state_table[0] = 0x00;
-	events[0] |= 0xe0;//Initialize display
-  Reset_timer();
 	level = 0;
+  Reset_timer();
   Init_max7219();
   Init_I2c();
-	//----------Initialize mpu6050----------
-	Write_mpu6050(0x6b, 0x48);
-	Write_mpu6050(0x19, 0x07);
-	Write_mpu6050(0x1A, 0x06);
-	Write_mpu6050(0x1B, 0x18);
-	Write_mpu6050(0x1C, 0x01);
+  Init_mpu6050();
+  Init_feedback();
 	//----------Initialize input----------
   P3M1 = 0x04;
 	input_rasing_edge = 0;
 	input_falling_edge = 0;
 	IT0 = 0;
 	EX0 = 1;
-	//----------Initialize feedback----------
-	feedback = 1;
-  is_feedback_on = 0;
   //----------Initialize ADC----------
   P1ASF = 0x80;
   ADC_RES = 0x00;
   Init_1ms_Timer();
 }
 //Shutdown Everything
+inline void Long_feedback() {
+  feedback = 0;
+  Delay_38ms();
+  Delay_38ms();
+	feedback = 1;
+}
+
 void Shutdown() {
 	__bit Restart = Failed;
 	//Turn everything off
 	Write_max7219(0x0c, 0x00);
 	Write_mpu6050(0x6b, 0x48);
 	input_rasing_edge = 0;
-	//Feedback
-	feedback = 0;
-  Delay_38ms();
-  Delay_38ms();
-	feedback = 1;
+  Long_feedback();
 	while (Restart != Successed) {
 		Stop_1ms_timer();
 		PCON = 0x02;
@@ -106,11 +101,7 @@ void Shutdown() {
 			}
 		}
 	}
-	//Feedback
-	feedback = 0;
-  Delay_38ms();
-  Delay_38ms();
-	feedback = 1;
+  Long_feedback();
 	//Return to normal
 	Write_max7219(0x0c, 0x01);
 	Write_mpu6050(0x6b, 0x00);
@@ -363,11 +354,10 @@ void main() {
 		//---Start feedback---
 		if ((events[0] & 0x10) != 0x00) {
 			events[0] &= 0xef;
-			feedback = 0;
-      is_feedback_on = 1;
+      Turn_on_feedback();
 		}
 		//---Stop feedback---
-		if (is_feedback_on == 1 && Times_of_1ms[Timer_Feedback] == 0x00) feedback = 1, is_feedback_on = 0;
+		if (Feedback_status() == ON && Times_of_1ms[Timer_Feedback] == 0x00) Turn_off_feedback();
 		//-Events-
 		Process_events();
 	}

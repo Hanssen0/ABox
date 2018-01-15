@@ -27,4 +27,11 @@ __bit Read_mpu6050(unsigned char address, unsigned int * dat) {
 	I2c_end();
 	return is_succeeded;
 }
+inline void Init_mpu6050() {
+  Write_mpu6050(0x6b, 0x48);
+	Write_mpu6050(0x19, 0x07);
+	Write_mpu6050(0x1A, 0x06);
+	Write_mpu6050(0x1B, 0x18);
+	Write_mpu6050(0x1C, 0x00);
+}
 #endif
