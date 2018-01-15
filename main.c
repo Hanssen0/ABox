@@ -4,7 +4,7 @@
 #include "MAX7219.h"
 #include "MPU6050.h"
 #include "Feedback.h"
-__bit input_rasing_edge, input_falling_edge;
+#include "Input.h"
 enum {
 	Press_level_none = 0x00,
 	Press_level_press = 0x01,
@@ -42,11 +42,6 @@ unsigned char events[1], state_table[1], level;
 //--               7-4               3-0
 //
 //Send 8 bits
-//Interrupt-function of button 
-void Input_signal_edge() __interrupt 0 {
-	if (input_pin == OFF) input_rasing_edge = TRUE;
-	else input_falling_edge = TRUE;
-}
 //Initialize everything (chips,input and timers)
 void Init() {
 	//----------Initialize framework----------
@@ -58,12 +53,8 @@ void Init() {
   Init_I2c();
   Init_mpu6050();
   Init_feedback();
-	//----------Initialize input----------
+  Init_input();
   P3M1 = 0x04;
-	input_rasing_edge = 0;
-	input_falling_edge = 0;
-	IT0 = 0;
-	EX0 = 1;
   //----------Initialize ADC----------
   P1ASF = 0x80;
   ADC_RES = 0x00;
@@ -82,15 +73,14 @@ void Shutdown() {
 	//Turn everything off
 	Write_max7219(0x0c, 0x00);
 	Write_mpu6050(0x6b, 0x48);
-	input_rasing_edge = 0;
+	_rasing_edge = 0;
   Long_feedback();
 	while (Restart != Successed) {
 		Stop_1ms_timer();
 		PCON = 0x02;
 		_nop_();
-		if (input_falling_edge == 1) input_falling_edge = 0;
-		if (input_rasing_edge == 1) {
-			input_rasing_edge = 0;
+    if(input_is_falling_edge() == TRUE) continue;
+		if (input_is_rasing_edge() == TRUE) {
 			Start_1ms_timer();
 			Times_of_1ms_long[Timer_Long_Press] = Press_level_restart_time;
 			while (input_pin == 0) {
@@ -303,8 +293,7 @@ void Process_events() {
 //Button pressed
 void Process_press_button() {
 	//Rasing edge
-	if (input_rasing_edge == 1) {
-		input_rasing_edge = 0;
+	if (input_is_rasing_edge() == TRUE) {
 		events[0] |= 0x01;//Event: Level changed
 		level &= 0xf0;
 		level |= Press_level_press;//Button level: Press
@@ -333,10 +322,16 @@ void Process_press_button() {
 //Button released
 void Process_release_button() {
 	//Falling edge
-	if (input_falling_edge == 1) {
-		events[0] |= 0x02;
-		input_falling_edge = 0;
+	if (input_is_falling_edge() == TRUE) {
+		events[0] |= The_2nd_bit;
 	}
+}
+void Process_feedback() {
+  if ((events[0] & The_5th_bit) != 0x00) {
+    events[0] &= ~The_5th_bit;
+    Turn_on_feedback();
+  }
+  if (Feedback_status() == ON && Times_of_1ms[Timer_Feedback] == 0x00) Turn_off_feedback();
 }
 void main() {
 	Init();
@@ -345,19 +340,13 @@ void main() {
 	//Work with event queue
 	Start_1ms_timer();
 	while (1==1) {
-		//-Hardwares-
+		//-Hardwares
 		//--Button--
 		if (input_pin == 0) Process_press_button();
 		if (input_pin == 1) Process_release_button();
     Update_display_max7219();
 		//--Feedback--
-		//---Start feedback---
-		if ((events[0] & 0x10) != 0x00) {
-			events[0] &= 0xef;
-      Turn_on_feedback();
-		}
-		//---Stop feedback---
-		if (Feedback_status() == ON && Times_of_1ms[Timer_Feedback] == 0x00) Turn_off_feedback();
+    Process_feedback();
 		//-Events-
 		Process_events();
 	}

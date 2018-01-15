@@ -1,5 +1,5 @@
 OUTPUT_PATH = ./Output/
-main.ihx: main.c STC15Pins.h ConstValue.h I2C.h Timer.h MAX7219.h MPU6050.h
+main.ihx: main.c STC15Pins.h ConstValue.h I2C.h Timer.h MAX7219.h MPU6050.h Input.h Feedback.h
 	mkdir -p $(OUTPUT_PATH)
 	sdcc --std-sdcc99 main.c -o $(OUTPUT_PATH)
 flash:
