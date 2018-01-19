@@ -28,6 +28,7 @@ void Init_1ms_Timer() {
 	AUXR |= The_3rd_bit;
 	IE2 |= The_3rd_bit;
 	EA = ON;
+  Reset_timer();
 }
 inline void Stop_1ms_timer() {
   AUXR &= ~The_5th_bit;
